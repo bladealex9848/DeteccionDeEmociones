@@ -6,6 +6,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
 import os
 import streamlit as st
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 
 # Configuración de la página de Streamlit
 st.set_page_config(
@@ -34,30 +35,11 @@ if not os.path.exists(prototxtPath) or not os.path.exists(weightsPath) or not os
     st.error("Error: Archivo de modelo o clasificador no encontrado.")
     st.stop()
 
-# Determinar si la aplicación se está ejecutando en un servidor remoto
-if "streamlit_share" in st.__version__.lower():
-    # En un servidor remoto, usa una cámara virtual en lugar de la cámara física
-    cam = cv2.VideoCapture(1, cv2.CAP_DSHOW)
-else:
-    # En local, utiliza la cámara física
-    cam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-
-if not cam.isOpened():
-    st.error("Error: No se pudo acceder a la cámara web.")
-    st.stop()
-
 # Cargamos el modelo de detección de rostros
 faceNet = cv2.dnn.readNet(prototxtPath, weightsPath)
 
 # Carga el detector de clasificación de emociones
 emotionModel = load_model(modelPath)
-
-# Se crea la captura de video
-col1, col2 = st.columns(2)
-with col1:
-    frame_placeholder = st.empty()
-with col2:
-    figura_placeholder = st.empty()
 
 # Función para predecir la emoción
 def predict_emotion(frame, faceNet, emotionModel):
@@ -87,43 +69,75 @@ def predict_emotion(frame, faceNet, emotionModel):
 classes = ['Enojado', 'Disgusto', 'Miedo', 'Feliz', 'Neutral', 'Triste', 'Sorprendido']
 colors = ['red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'black']
 
-# Bucle principal para procesar el video y predecir emociones
-try:
-    while True:
-        ret, frame = cam.read()
-        if not ret:
-            st.error("Error: No se pudo leer el cuadro de la cámara web.")
-            break
-        frame = imutils.resize(frame, width=640)
-        (locs, preds) = predict_emotion(frame, faceNet, emotionModel)
-        
+# Clase para el procesamiento de video con webrtc
+class EmotionDetector(VideoTransformerBase):
+    def transform(self, frame):
+        img = frame.to_ndarray(format="bgr24")
+        img = imutils.resize(img, width=640)
+        (locs, preds) = predict_emotion(img, faceNet, emotionModel)
+
         for (box, pred) in zip(locs, preds):
             (Xi, Yi, Xf, Yf) = box
             (angry, disgust, fear, happy, neutral, sad, surprise) = pred
             label = "{}: {:.0f}%".format(classes[np.argmax(pred)], max(angry, disgust, fear, happy, neutral, sad, surprise) * 100)
-            cv2.rectangle(frame, (Xi, Yi-40), (Xf, Yi), (255, 0, 0), -1)
-            cv2.putText(frame, label, (Xi+5, Yi-15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-            cv2.rectangle(frame, (Xi, Yi), (Xf, Yf), (255, 0, 0), 3)
-            y = [angry, disgust, fear, happy, neutral, sad, surprise]
+            cv2.rectangle(img, (Xi, Yi-40), (Xf, Yi), (255, 0, 0), -1)
+            cv2.putText(img, label, (Xi+5, Yi-15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            cv2.rectangle(img, (Xi, Yi), (Xf, Yf), (255, 0, 0), 3)
+
+        return img
+
+# Configurar Streamlit para usar la cámara virtual o física
+if "streamlit_share" in st.__version__.lower():
+    webrtc_streamer(key="example", video_transformer_factory=EmotionDetector)
+else:
+    cam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    if not cam.isOpened():
+        st.error("Error: No se pudo acceder a la cámara web.")
+        st.stop()
+
+    # Se crea la captura de video
+    col1, col2 = st.columns(2)
+    with col1:
+        frame_placeholder = st.empty()
+    with col2:
+        figura_placeholder = st.empty()
+
+    try:
+        while True:
+            ret, frame = cam.read()
+            if not ret:
+                st.error("Error: No se pudo leer el cuadro de la cámara web.")
+                break
+            frame = imutils.resize(frame, width=640)
+            (locs, preds) = predict_emotion(frame, faceNet, emotionModel)
             
-            # Actualizar el marcador de posición con la nueva imagen
-            frame_placeholder.image(frame, channels="BGR")
+            for (box, pred) in zip(locs, preds):
+                (Xi, Yi, Xf, Yf) = box
+                (angry, disgust, fear, happy, neutral, sad, surprise) = pred
+                label = "{}: {:.0f}%".format(classes[np.argmax(pred)], max(angry, disgust, fear, happy, neutral, sad, surprise) * 100)
+                cv2.rectangle(frame, (Xi, Yi-40), (Xf, Yi), (255, 0, 0), -1)
+                cv2.putText(frame, label, (Xi+5, Yi-15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                cv2.rectangle(frame, (Xi, Yi), (Xf, Yf), (255, 0, 0), 3)
+                y = [angry, disgust, fear, happy, neutral, sad, surprise]
+                
+                # Actualizar el marcador de posición con la nueva imagen
+                frame_placeholder.image(frame, channels="BGR")
 
-            # Limpia y actualiza la figura en su marcador de posición
-            figura1, ax = plt.subplots()  # Se define 'ax' aquí dentro del bucle
-            ax.bar(range(len(classes)), [p for p in preds[0]], color=colors, tick_label=classes)
-            ax.set_ylim([0, 1])
-            plt.xticks(rotation=45, ha='right')
-            plt.tight_layout()
-            figura_placeholder.pyplot(figura1)
+                # Limpia y actualiza la figura en su marcador de posición
+                figura1, ax = plt.subplots()  # Se define 'ax' aquí dentro del bucle
+                ax.bar(range(len(classes)), [p for p in preds[0]], color=colors, tick_label=classes)
+                ax.set_ylim([0, 1])
+                plt.xticks(rotation=45, ha='right')
+                plt.tight_layout()
+                figura_placeholder.pyplot(figura1)
 
-except Exception as e:
-    st.error(f"Ha ocurrido un error: {e}")
+    except Exception as e:
+        st.error(f"Ha ocurrido un error: {e}")
 
-finally:
-    # No olvides liberar la cámara y cerrar todas las ventanas de OpenCV al finalizar
-    cam.release()
-    cv2.destroyAllWindows()
+    finally:
+        # No olvides liberar la cámara y cerrar todas las ventanas de OpenCV al finalizar
+        cam.release()
+        cv2.destroyAllWindows()
 
 # Footer
 st.sidebar.markdown('---')
