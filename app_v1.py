@@ -34,18 +34,6 @@ if not os.path.exists(prototxtPath) or not os.path.exists(weightsPath) or not os
     st.error("Error: Archivo de modelo o clasificador no encontrado.")
     st.stop()
 
-# Determinar si la aplicación se está ejecutando en un servidor remoto
-if "streamlit_share" in st.__version__.lower():
-    # En un servidor remoto, usa una cámara virtual en lugar de la cámara física
-    cam = cv2.VideoCapture(1, cv2.CAP_DSHOW)
-else:
-    # En local, utiliza la cámara física
-    cam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-
-if not cam.isOpened():
-    st.error("Error: No se pudo acceder a la cámara web.")
-    st.stop()
-
 # Cargamos el modelo de detección de rostros
 faceNet = cv2.dnn.readNet(prototxtPath, weightsPath)
 
@@ -53,11 +41,10 @@ faceNet = cv2.dnn.readNet(prototxtPath, weightsPath)
 emotionModel = load_model(modelPath)
 
 # Se crea la captura de video
-col1, col2 = st.columns(2)
-with col1:
-    frame_placeholder = st.empty()
-with col2:
-    figura_placeholder = st.empty()
+cam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+if not cam.isOpened():
+    st.error("Error: No se pudo acceder a la cámara web.")
+    st.stop()
 
 # Función para predecir la emoción
 def predict_emotion(frame, faceNet, emotionModel):
@@ -86,6 +73,13 @@ def predict_emotion(frame, faceNet, emotionModel):
 # Tipos de emociones y colores para la gráfica
 classes = ['Enojado', 'Disgusto', 'Miedo', 'Feliz', 'Neutral', 'Triste', 'Sorprendido']
 colors = ['red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'black']
+
+# Crear marcadores de posición para la imagen y la gráfica
+col1, col2 = st.columns(2)
+with col1:
+    frame_placeholder = st.empty()
+with col2:
+    figura_placeholder = st.empty()
 
 # Bucle principal para procesar el video y predecir emociones
 try:
