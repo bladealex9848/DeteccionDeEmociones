@@ -12,7 +12,7 @@ from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 st.set_page_config(
     page_title="Detector de Emociones",
     page_icon=":smiley:",
-    layout="wide",  # Utiliza el ancho completo de la página
+    layout="wide",
     initial_sidebar_state='collapsed',
     menu_items={
         'Get Help': 'https://alexander.oviedo.isabellaea.com/',
@@ -30,15 +30,11 @@ prototxtPath = "deploy.prototxt"
 weightsPath = "res10_300x300_ssd_iter_140000.caffemodel"
 modelPath = "modelFEC.h5"
 
-# Asegurarse de que los archivos del modelo existen
 if not os.path.exists(prototxtPath) or not os.path.exists(weightsPath) or not os.path.exists(modelPath):
     st.error("Error: Archivo de modelo o clasificador no encontrado.")
     st.stop()
 
-# Cargamos el modelo de detección de rostros
 faceNet = cv2.dnn.readNet(prototxtPath, weightsPath)
-
-# Carga el detector de clasificación de emociones
 emotionModel = load_model(modelPath)
 
 # Función para predecir la emoción
@@ -86,15 +82,14 @@ class EmotionDetector(VideoTransformerBase):
 
         return img
 
-# Configurar Streamlit para usar la cámara virtual o física
-if "streamlit_share" not in st.__version__.lower():
-    # En local, utiliza la cámara física
+use_local_camera = st.checkbox("Usar cámara local (solo para pruebas locales)")
+
+if use_local_camera:
     cam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not cam.isOpened():
         st.error("Error: No se pudo acceder a la cámara web.")
         st.stop()
 
-    # Se crea la captura de video
     col1, col2 = st.columns(2)
     with col1:
         frame_placeholder = st.empty()
@@ -134,14 +129,11 @@ if "streamlit_share" not in st.__version__.lower():
         st.error(f"Ha ocurrido un error: {e}")
 
     finally:
-        # No olvides liberar la cámara y cerrar todas las ventanas de OpenCV al finalizar
         cam.release()
         cv2.destroyAllWindows()
 else:
-    # En un servidor remoto, usa una cámara virtual en lugar de la cámara física
     webrtc_streamer(key="example", video_transformer_factory=EmotionDetector)
 
-# Footer
 st.sidebar.markdown('---')
 st.sidebar.subheader('Creado por:')
 st.sidebar.markdown('Alexander Oviedo Fadul')
