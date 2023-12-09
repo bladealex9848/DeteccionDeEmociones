@@ -1,4 +1,4 @@
-![Logo del detector de emociones en tiempo real](https://raw.githubusercontent.com/bladealex9848/TurnosFestivos/main/logo.png)
+![Logo del detector de emociones en tiempo real](https://raw.githubusercontent.com/bladealex9848/DeteccionDeEmociones/main/logo.png)
 
 # Real-Time Emotion Detector
 
