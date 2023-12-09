@@ -1,3 +1,4 @@
+import av
 import cv2
 import numpy as np
 import imutils
@@ -67,7 +68,7 @@ colors = ['red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'black']
 
 # Clase para el procesamiento de video con webrtc
 class EmotionDetector(VideoTransformerBase):
-    def transform(self, frame):
+    def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
         img = imutils.resize(img, width=640)
         (locs, preds) = predict_emotion(img, faceNet, emotionModel)
@@ -80,7 +81,8 @@ class EmotionDetector(VideoTransformerBase):
             cv2.putText(img, label, (Xi+5, Yi-15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
             cv2.rectangle(img, (Xi, Yi), (Xf, Yf), (255, 0, 0), 3)
 
-        return img
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
+
 
 use_local_camera = st.checkbox("Usar cámara local (solo para pruebas locales)")
 
