@@ -4,3 +4,4 @@ numpy
 imutils
 matplotlib
 tensorflow
+streamlit_webrtc
