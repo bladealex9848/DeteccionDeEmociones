@@ -87,9 +87,8 @@ class EmotionDetector(VideoTransformerBase):
         return img
 
 # Configurar Streamlit para usar la cámara virtual o física
-if "streamlit_share" in st.__version__.lower():
-    webrtc_streamer(key="example", video_transformer_factory=EmotionDetector)
-else:
+if "streamlit_share" not in st.__version__.lower():
+    # En local, utiliza la cámara física
     cam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not cam.isOpened():
         st.error("Error: No se pudo acceder a la cámara web.")
@@ -138,6 +137,9 @@ else:
         # No olvides liberar la cámara y cerrar todas las ventanas de OpenCV al finalizar
         cam.release()
         cv2.destroyAllWindows()
+else:
+    # En un servidor remoto, usa una cámara virtual en lugar de la cámara física
+    webrtc_streamer(key="example", video_transformer_factory=EmotionDetector)
 
 # Footer
 st.sidebar.markdown('---')
