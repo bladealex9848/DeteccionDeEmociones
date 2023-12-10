@@ -138,7 +138,7 @@ else:
     # Configuración de webrtc_streamer
     webrtc_streamer(
         key="example", 
-        video_transformer_factory=EmotionDetector, 
+        video_processor_factory=EmotionDetector,  # Cambiado de video_transformer_factory
         mode=WebRtcMode.SENDRECV, 
         async_processing=True,
         media_stream_constraints={"video": True, "audio": False}
