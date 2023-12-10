@@ -7,7 +7,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
 import os
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
 
 # Configuración de la página de Streamlit
 st.set_page_config(
@@ -69,20 +69,21 @@ colors = ['red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'black']
 # Clase para el procesamiento de video con webrtc
 class EmotionDetector(VideoTransformerBase):
     def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        img = imutils.resize(img, width=640)
-        (locs, preds) = predict_emotion(img, faceNet, emotionModel)
+        try:
+            img = frame.to_ndarray(format="bgr24")
+            img = imutils.resize(img, width=640)
+            (locs, preds) = predict_emotion(img, faceNet, emotionModel)
 
-        for (box, pred) in zip(locs, preds):
-            (Xi, Yi, Xf, Yf) = box
-            (angry, disgust, fear, happy, neutral, sad, surprise) = pred
-            label = "{}: {:.0f}%".format(classes[np.argmax(pred)], max(angry, disgust, fear, happy, neutral, sad, surprise) * 100)
-            cv2.rectangle(img, (Xi, Yi-40), (Xf, Yi), (255, 0, 0), -1)
-            cv2.putText(img, label, (Xi+5, Yi-15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-            cv2.rectangle(img, (Xi, Yi), (Xf, Yf), (255, 0, 0), 3)
+            for (box, pred) in zip(locs, preds):
+                (Xi, Yi, Xf, Yf) = box
+                label = "{}: {:.0f}%".format(classes[np.argmax(pred)], max(pred) * 100)
+                cv2.rectangle(img, (Xi, Yi-40), (Xf, Yi), (255, 0, 0), -1)
+                cv2.putText(img, label, (Xi+5, Yi-15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                cv2.rectangle(img, (Xi, Yi), (Xf, Yf), (255, 0, 0), 3)
 
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
-
+            return av.VideoFrame.from_ndarray(img, format="bgr24")
+        except Exception as e:
+            print(f"Error en el procesamiento de video: {e}")
 
 use_local_camera = st.checkbox("Usar cámara local (solo para pruebas locales)")
 
@@ -133,8 +134,15 @@ if use_local_camera:
     finally:
         cam.release()
         cv2.destroyAllWindows()
-else:
-    webrtc_streamer(key="example", video_transformer_factory=EmotionDetector)
+else:    
+    # Configuración de webrtc_streamer
+    webrtc_streamer(
+        key="example", 
+        video_transformer_factory=EmotionDetector, 
+        mode=WebRtcMode.SENDRECV, 
+        async_processing=True,
+        media_stream_constraints={"video": True, "audio": False}
+    )
 
 st.sidebar.markdown('---')
 st.sidebar.subheader('Creado por:')
