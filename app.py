@@ -8,7 +8,6 @@ from tensorflow.keras.preprocessing.image import img_to_array
 import os
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
-from sample_utils.turn import get_ice_servers
 
 # Configuración de la página de Streamlit
 st.set_page_config(
@@ -136,13 +135,19 @@ if use_local_camera:
         cam.release()
         cv2.destroyAllWindows()
 else:    
-    # Configuración de webrtc_streamer
+    # Configuración de webrtc_streamer sin sample_utils
+    rtc_configuration = {
+        "iceServers": [
+            {"urls": ["stun:stun.l.google.com:19302"]}
+        ]
+    }
+
     webrtc_streamer(
         key="example", 
         video_processor_factory=EmotionDetector,
         mode=WebRtcMode.SENDRECV, 
         async_processing=True,
-        rtc_configuration={"iceServers": get_ice_servers()},  # Añadir esta línea
+        rtc_configuration=rtc_configuration,
         media_stream_constraints={"video": True, "audio": False}
     )
 
