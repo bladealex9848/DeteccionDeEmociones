@@ -8,6 +8,7 @@ from tensorflow.keras.preprocessing.image import img_to_array
 import os
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
+from sample_utils.turn import get_ice_servers
 
 # Configuración de la página de Streamlit
 st.set_page_config(
@@ -138,9 +139,10 @@ else:
     # Configuración de webrtc_streamer
     webrtc_streamer(
         key="example", 
-        video_processor_factory=EmotionDetector,  # Cambiado de video_transformer_factory
+        video_processor_factory=EmotionDetector,
         mode=WebRtcMode.SENDRECV, 
         async_processing=True,
+        rtc_configuration={"iceServers": get_ice_servers()},  # Añadir esta línea
         media_stream_constraints={"video": True, "audio": False}
     )
 
