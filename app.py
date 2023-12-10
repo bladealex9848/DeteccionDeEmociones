@@ -27,9 +27,9 @@ st.title('Detector de Emociones en Tiempo Real')
 st.write("Este es un detector de emociones en tiempo real que utiliza un modelo preentrenado.")
 
 # Verifica si los archivos del modelo y clasificador existen
-prototxtPath = "deploy.prototxt"
-weightsPath = "res10_300x300_ssd_iter_140000.caffemodel"
-modelPath = "modelFEC.h5"
+prototxtPath = "models/deploy.prototxt"
+weightsPath = "models/res10_300x300_ssd_iter_140000.caffemodel"
+modelPath = "models/modelFEC.h5"
 
 if not os.path.exists(prototxtPath) or not os.path.exists(weightsPath) or not os.path.exists(modelPath):
     st.error("Error: Archivo de modelo o clasificador no encontrado.")
