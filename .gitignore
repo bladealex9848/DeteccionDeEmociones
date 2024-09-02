@@ -73,3 +73,10 @@ docs/_build/
 
 # PyBuilder
 .DS_Store
+
+# Entorno virtual
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/

@@ -9,6 +9,22 @@ import os
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
 
+# Manejo de errores para las importaciones de TensorFlow
+try:
+    import tensorflow as tf
+    from tensorflow.keras.models import load_model
+    from tensorflow.keras.preprocessing.image import img_to_array
+except ImportError:
+    st.error("Error importing TensorFlow. Please check your installation.")
+    st.stop()
+
+# Manejo de errores para las importaciones de streamlit_webrtc
+try:
+    from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
+except ImportError:
+    st.error("Error importing streamlit_webrtc. Please check your installation.")
+    st.stop()
+
 # Configuración de la página de Streamlit
 st.set_page_config(
     page_title="Detector de Emociones",
