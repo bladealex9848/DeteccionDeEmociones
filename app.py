@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import imutils
 import plotly.graph_objs as go
+import matplotlib.pyplot as plt
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
 import os
@@ -10,21 +11,13 @@ import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
 import threading
 import time
+import json
 
 # Configuración de la página de Streamlit
-st.set_page_config(
-    page_title="Detector de Emociones",
-    page_icon=":smiley:",
-    layout="wide",
-    initial_sidebar_state='collapsed',
-)
+st.set_page_config(page_title="Detector de Emociones", page_icon=":smiley:", layout="wide")
 
 # Título y descripción de la aplicación
 st.title('Detector de Emociones en Tiempo Real')
-st.write("""
-    [![ver código fuente](https://img.shields.io/badge/Repositorio%20GitHub-gris?logo=github)](https://github.com/bladealex9848/DeteccionDeEmociones)
-    ![Visitantes](https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Femovision.streamlit.app&label=Visitantes&labelColor=%235d5d5d&countColor=%231e7ebf&style=flat)
-    """)
 st.write("Este es un detector de emociones en tiempo real que utiliza un modelo preentrenado.")
 
 # Verifica si los archivos del modelo y clasificador existen
@@ -34,9 +27,10 @@ def load_models():
     weightsPath = "models/res10_300x300_ssd_iter_140000.caffemodel"
     modelPath = "models/modelFEC.h5"
 
-    if not os.path.exists(prototxtPath) or not os.path.exists(weightsPath) or not os.path.exists(modelPath):
-        st.error("Error: Archivo de modelo o clasificador no encontrado.")
-        st.stop()
+    for path in [prototxtPath, weightsPath, modelPath]:
+        if not os.path.exists(path):
+            st.error(f"Error: Archivo no encontrado: {path}")
+            st.stop()
 
     faceNet = cv2.dnn.readNet(prototxtPath, weightsPath)
     emotionModel = load_model(modelPath)
@@ -46,7 +40,7 @@ faceNet, emotionModel = load_models()
 
 # Función para predecir la emoción
 def predict_emotion(frame, faceNet, emotionModel):
-    blob = cv2.dnn.blobFromImage(frame, 1.0, (224, 224),(104.0, 177.0, 123.0))
+    blob = cv2.dnn.blobFromImage(frame, 1.0, (224, 224), (104.0, 177.0, 123.0))
     faceNet.setInput(blob)
     detections = faceNet.forward()
     faces = []
@@ -72,9 +66,11 @@ def predict_emotion(frame, faceNet, emotionModel):
 classes = ['Enojado', 'Disgusto', 'Miedo', 'Feliz', 'Neutral', 'Triste', 'Sorprendido']
 colors = ['red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'black']
 
-# Inicializa una variable de sesión para almacenar los datos del gráfico
+# Inicializa variables de sesión
 if 'preds' not in st.session_state:
     st.session_state['preds'] = [0] * len(classes)
+if 'chart_type' not in st.session_state:
+    st.session_state['chart_type'] = 'Plotly'
 
 # Clase para el procesamiento de video con webrtc
 class EmotionDetector(VideoTransformerBase):
@@ -104,48 +100,104 @@ class EmotionDetector(VideoTransformerBase):
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
+# Funciones para crear gráficos
+def create_plotly_chart():
+    data = [go.Bar(x=classes, y=st.session_state['preds'], marker_color=colors)]
+    layout = go.Layout(yaxis=dict(range=[0, 1]), title='Emociones Detectadas')
+    fig = go.Figure(data=data, layout=layout)
+    return fig
+
+def create_matplotlib_chart():
+    fig, ax = plt.subplots()
+    ax.bar(classes, st.session_state['preds'], color=colors)
+    ax.set_ylim(0, 1)
+    ax.set_title('Emociones Detectadas')
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    return fig
+
 # Función para actualizar el gráfico
-def update_chart():
+def update_chart(chart_placeholder):
     while True:
-        if 'preds' in st.session_state:
-            data = [go.Bar(
-                x=classes,
-                y=st.session_state['preds'],
-                marker_color=colors
-            )]
-            layout = go.Layout(
-                yaxis=dict(range=[0, 1]),
-                title='Emociones Detectadas'
-            )
-            fig = go.Figure(data=data, layout=layout)
-            chart.plotly_chart(fig, use_container_width=True)
-        time.sleep(0.1)  # Actualiza cada 0.1 segundos
+        try:
+            if st.session_state['chart_type'] == 'Plotly':
+                fig = create_plotly_chart()
+                chart_placeholder.plotly_chart(fig, use_container_width=True)
+            else:
+                fig = create_matplotlib_chart()
+                chart_placeholder.pyplot(fig)
+        except Exception as e:
+            st.error(f"Error al actualizar el gráfico: {e}")
+        time.sleep(0.1)
 
 # Crear dos columnas
 col1, col2 = st.columns(2)
 
 with col1:
-    # Aquí va la parte del video
+    # Parte del video
     ctx = webrtc_streamer(
-        key="example", 
+        key="example",
         video_processor_factory=EmotionDetector,
-        mode=WebRtcMode.SENDRECV, 
+        mode=WebRtcMode.SENDRECV,
         async_processing=True,
         rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
         media_stream_constraints={"video": True, "audio": False}
     )
 
 with col2:
-    # Aquí va el gráfico
-    chart = st.empty()
+    # Selector de tipo de gráfico
+    st.session_state['chart_type'] = st.radio("Seleccionar tipo de gráfico:", ('Plotly', 'Matplotlib'))
+    
+    # Placeholder para el gráfico
+    chart_placeholder = st.empty()
 
-    # Inicia el hilo de actualización del gráfico
+    # Mostrar datos en bruto
+    st.write("Datos de emociones en tiempo real:")
+    data_placeholder = st.empty()
+
+    def update_data():
+        while True:
+            data_placeholder.json(dict(zip(classes, st.session_state['preds'])))
+            time.sleep(0.1)
+
+    # Iniciar hilos de actualización
     if ctx.state.playing:
-        update_thread = threading.Thread(target=update_chart)
-        update_thread.daemon = True
-        update_thread.start()
+        chart_thread = threading.Thread(target=update_chart, args=(chart_placeholder,))
+        data_thread = threading.Thread(target=update_data)
+        chart_thread.daemon = True
+        data_thread.daemon = True
+        chart_thread.start()
+        data_thread.start()
 
+# Información adicional
 st.sidebar.markdown('---')
 st.sidebar.subheader('Creado por:')
 st.sidebar.markdown('Alexander Oviedo Fadul')
-st.sidebar.markdown("[GitHub](https://github.com/bladealex9848) | [Website](https://alexanderoviedofadul.dev/) | [LinkedIn](https://www.linkedin.com/in/alexander-oviedo-fadul/) | [Instagram](https://www.instagram.com/alexander.oviedo.fadul) | [Twitter](https://twitter.com/alexanderofadul) | [Facebook](https://www.facebook.com/alexanderof/) | [WhatsApp](https://api.whatsapp.com/send?phone=573015930519&text=Hola%20!Quiero%20conversar%20contigo!%20)")
+st.sidebar.markdown("[GitHub](https://github.com/bladealex9848) | [Website](https://alexanderoviedofadul.dev/)")
+
+# Sistema de manejo de incidentes
+st.sidebar.markdown('---')
+st.sidebar.subheader('Registro de Incidentes')
+
+if 'incidents' not in st.session_state:
+    st.session_state['incidents'] = []
+
+incident_type = st.sidebar.selectbox("Tipo de Incidente", ["Error de Carga", "Fallo en Detección", "Problema de Rendimiento", "Otro"])
+incident_description = st.sidebar.text_area("Descripción del Incidente")
+
+if st.sidebar.button("Reportar Incidente"):
+    incident = {
+        "tipo": incident_type,
+        "descripcion": incident_description,
+        "fecha": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+    st.session_state['incidents'].append(incident)
+    st.sidebar.success("Incidente reportado con éxito.")
+
+if st.sidebar.button("Ver Incidentes Reportados"):
+    for idx, incident in enumerate(st.session_state['incidents'], 1):
+        st.sidebar.markdown(f"**Incidente {idx}**")
+        st.sidebar.write(f"Tipo: {incident['tipo']}")
+        st.sidebar.write(f"Descripción: {incident['descripcion']}")
+        st.sidebar.write(f"Fecha: {incident['fecha']}")
+        st.sidebar.markdown("---")
