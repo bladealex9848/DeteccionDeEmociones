@@ -1,7 +1,9 @@
-streamlit==1.28.0
+streamlit==1.27.2
 opencv-python-headless==4.8.1.78
-numpy==1.26.0
+numpy==1.23.5
 imutils==0.5.4
-plotly==5.18.0
-tensorflow-cpu==2.14.0
+matplotlib==3.7.2
+tensorflow-cpu==2.13.0
 streamlit_webrtc==0.47.1
+protobuf==3.20.3
+av==10.0.0

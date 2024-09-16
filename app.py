@@ -2,20 +2,34 @@ import av
 import cv2
 import numpy as np
 import imutils
-import plotly.graph_objs as go
+import matplotlib.pyplot as plt
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
 import os
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
-import threading
-import time
+import logging
+from datetime import datetime
+import io
+
+# Configuración de logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Configuración de la página de Streamlit
-st.set_page_config(page_title="Detector de Emociones", page_icon=":smiley:", layout="wide")
+st.set_page_config(
+    page_title="Detector de Emociones",
+    page_icon=":smiley:",
+    layout="wide",
+    initial_sidebar_state='collapsed',
+)
 
 # Título y descripción de la aplicación
 st.title('Detector de Emociones en Tiempo Real')
+st.write("""
+    [![ver código fuente](https://img.shields.io/badge/Repositorio%20GitHub-gris?logo=github)](https://github.com/bladealex9848/DeteccionDeEmociones)
+    ![Visitantes](https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Femovision.streamlit.app&label=Visitantes&labelColor=%235d5d5d&countColor=%231e7ebf&style=flat)
+    """)
 st.write("Este es un detector de emociones en tiempo real que utiliza un modelo preentrenado.")
 
 # Verifica si los archivos del modelo y clasificador existen
@@ -25,10 +39,9 @@ def load_models():
     weightsPath = "models/res10_300x300_ssd_iter_140000.caffemodel"
     modelPath = "models/modelFEC.h5"
 
-    for path in [prototxtPath, weightsPath, modelPath]:
-        if not os.path.exists(path):
-            st.error(f"Error: Archivo no encontrado: {path}")
-            st.stop()
+    if not os.path.exists(prototxtPath) or not os.path.exists(weightsPath) or not os.path.exists(modelPath):
+        st.error("Error: Archivo de modelo o clasificador no encontrado.")
+        st.stop()
 
     faceNet = cv2.dnn.readNet(prototxtPath, weightsPath)
     emotionModel = load_model(modelPath)
@@ -38,7 +51,7 @@ faceNet, emotionModel = load_models()
 
 # Función para predecir la emoción
 def predict_emotion(frame, faceNet, emotionModel):
-    blob = cv2.dnn.blobFromImage(frame, 1.0, (224, 224), (104.0, 177.0, 123.0))
+    blob = cv2.dnn.blobFromImage(frame, 1.0, (224, 224),(104.0, 177.0, 123.0))
     faceNet.setInput(blob)
     detections = faceNet.forward()
     faces = []
@@ -64,7 +77,7 @@ def predict_emotion(frame, faceNet, emotionModel):
 classes = ['Enojado', 'Disgusto', 'Miedo', 'Feliz', 'Neutral', 'Triste', 'Sorprendido']
 colors = ['red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'black']
 
-# Inicializa variables de sesión
+# Inicializa una variable de sesión para almacenar los datos del gráfico
 if 'preds' not in st.session_state:
     st.session_state['preds'] = [0] * len(classes)
 
@@ -93,68 +106,131 @@ class EmotionDetector(VideoTransformerBase):
 
         # Actualiza la variable de sesión con los últimos datos de predicción
         st.session_state['preds'] = preds_sum
+        
+        # Registrar las predicciones
+        logger.info(f"Predicciones actualizadas: {preds_sum}")
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-# Función para crear gráfico de Plotly
-def create_plotly_chart():
-    data = [go.Bar(x=classes, y=st.session_state['preds'], marker_color=colors)]
-    layout = go.Layout(yaxis=dict(range=[0, 1]), title='Emociones Detectadas')
-    fig = go.Figure(data=data, layout=layout)
-    return fig
+use_local_camera = st.checkbox("Usar cámara local (solo para pruebas locales)")
 
-# Función para mostrar datos en texto
-def show_text_data():
-    for emotion, value in zip(classes, st.session_state['preds']):
-        st.write(f"{emotion}: {value:.2f}")
+if use_local_camera:
+    cam = cv2.VideoCapture(0)
+    if not cam.isOpened():
+        st.error("Error: No se pudo acceder a la cámara web.")
+        st.stop()
 
-# Función para actualizar la visualización
-def update_visualization():
-    while True:
-        try:
-            with chart_placeholder.container():
-                st.plotly_chart(create_plotly_chart(), use_container_width=True)
-        except Exception as e:
-            st.error(f"Error al crear el gráfico: {e}")
-            st.write("Mostrando datos en formato de texto como respaldo:")
-            show_text_data()
-        time.sleep(0.1)
+    col1, col2 = st.columns(2)
+    with col1:
+        frame_placeholder = st.empty()
+    with col2:
+        figura_placeholder = st.empty()
 
-# Crear dos columnas
-col1, col2 = st.columns(2)
+    try:
+        while True:
+            ret, frame = cam.read()
+            if not ret:
+                st.error("Error: No se pudo leer el cuadro de la cámara web.")
+                break
+            frame = imutils.resize(frame, width=640)
+            (locs, preds) = predict_emotion(frame, faceNet, emotionModel)
+            
+            preds_sum = [0] * len(classes)
+            for (box, pred) in zip(locs, preds):
+                (Xi, Yi, Xf, Yf) = box
+                label = "{}: {:.0f}%".format(classes[np.argmax(pred)], max(pred) * 100)
+                cv2.rectangle(frame, (Xi, Yi-40), (Xf, Yi), (255, 0, 0), -1)
+                cv2.putText(frame, label, (Xi+5, Yi-15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                cv2.rectangle(frame, (Xi, Yi), (Xf, Yf), (255, 0, 0), 3)
+                preds_sum = [sum(x) for x in zip(preds_sum, pred)]
+            
+            # Normalizar las predicciones
+            total = sum(preds_sum)
+            if total > 0:
+                preds_sum = [x / total for x in preds_sum]
+            
+            # Actualizar el marcador de posición con la nueva imagen
+            frame_placeholder.image(frame, channels="BGR")
 
-with col1:
-    # Parte del video
-    ctx = webrtc_streamer(
-        key="example",
-        video_processor_factory=EmotionDetector,
-        mode=WebRtcMode.SENDRECV,
-        async_processing=True,
-        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-        media_stream_constraints={"video": True, "audio": False}
-    )
+            # Actualizar gráfica
+            fig, ax = plt.subplots()
+            ax.bar(range(len(classes)), preds_sum, color=colors, tick_label=classes)
+            ax.set_ylim([0, 1])
+            plt.xticks(rotation=45, ha='right')
+            plt.tight_layout()
+            figura_placeholder.pyplot(fig)
+            plt.close(fig)
 
-with col2:
-    # Placeholder para el gráfico o texto
-    chart_placeholder = st.empty()
+            # Registrar las predicciones
+            logger.info(f"Predicciones (cámara local): {preds_sum}")
 
-    # Iniciar hilo de actualización
-    if ctx.state.playing:
-        update_thread = threading.Thread(target=update_visualization)
-        update_thread.daemon = True
-        update_thread.start()
+    except Exception as e:
+        st.error(f"Ha ocurrido un error: {e}")
+        logger.error(f"Error en el modo de cámara local: {e}")
 
-# Información adicional
+    finally:
+        cam.release()
+        cv2.destroyAllWindows()
+else:
+    # Define dos columnas: una para el video y otra para el gráfico de barras
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # Aquí va la parte del video
+        ctx = webrtc_streamer(
+            key="example", 
+            video_processor_factory=EmotionDetector,
+            mode=WebRtcMode.SENDRECV, 
+            async_processing=True,
+            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+            media_stream_constraints={"video": True, "audio": False}
+        )
+
+    with col2:
+        # Dibuja el gráfico de barras utilizando los datos almacenados en la variable de sesión
+        figura_placeholder = st.empty()
+        
+        def update_chart():
+            if 'preds' in st.session_state:
+                fig, ax = plt.subplots()
+                ax.bar(range(len(classes)), st.session_state['preds'], color=colors, tick_label=classes)
+                ax.set_ylim([0, 1])
+                plt.xticks(rotation=45, ha='right')
+                plt.tight_layout()
+                figura_placeholder.pyplot(fig)
+                plt.close(fig)
+                logger.info(f"Gráfico actualizado con predicciones: {st.session_state['preds']}")
+
+        if ctx.state.playing:
+            update_chart()  # Actualizar el gráfico inicialmente
+            st.empty()  # Este empty provocará una actualización periódica
+
 st.sidebar.markdown('---')
 st.sidebar.subheader('Creado por:')
 st.sidebar.markdown('Alexander Oviedo Fadul')
-st.sidebar.markdown("[GitHub](https://github.com/bladealex9848) | [Website](https://alexanderoviedofadul.dev/)")
+st.sidebar.markdown("[GitHub](https://github.com/bladealex9848) | [Website](https://alexanderoviedofadul.dev/) | [LinkedIn](https://www.linkedin.com/in/alexander-oviedo-fadul/) | [Instagram](https://www.instagram.com/alexander.oviedo.fadul) | [Twitter](https://twitter.com/alexanderofadul) | [Facebook](https://www.facebook.com/alexanderof/) | [WhatsApp](https://api.whatsapp.com/send?phone=573015930519&text=Hola%20!Quiero%20conversar%20contigo!%20)")
 
-# Sistema de recuperación ante errores
-st.sidebar.markdown('---')
-st.sidebar.subheader('Estado del Sistema')
+# Sección de registro de información (contraída por defecto)
+with st.expander("Registro de Información", expanded=False):
+    if st.button("Mostrar últimos registros"):
+        st.text("Últimos registros:")
+        # Usar StringIO para capturar los logs
+        log_capture_string = io.StringIO()
+        ch = logging.StreamHandler(log_capture_string)
+        ch.setLevel(logging.INFO)
+        logger.addHandler(ch)
 
-if st.sidebar.button("Reiniciar Visualización"):
-    st.experimental_rerun()
+        # Forzar un log para asegurarnos de que tenemos algo que mostrar
+        logger.info("Mostrando registros")
 
-st.sidebar.info("Si no ves las estadísticas, intenta reiniciar la visualización o recargar la página.")
+        # Obtener el contenido del log
+        log_contents = log_capture_string.getvalue()
+        log_entries = log_contents.split('\n')
+
+        # Mostrar las últimas 10 entradas (o menos si no hay 10)
+        for entry in log_entries[-10:]:
+            if entry:  # Asegurarse de que la entrada no está vacía
+                st.text(entry)
+
+        # Limpiar el handler adicional para evitar duplicados
+        logger.removeHandler(ch)
