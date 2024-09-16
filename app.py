@@ -9,22 +9,6 @@ import os
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
 
-# Manejo de errores para las importaciones de TensorFlow
-try:
-    import tensorflow as tf
-    from tensorflow.keras.models import load_model
-    from tensorflow.keras.preprocessing.image import img_to_array
-except ImportError:
-    st.error("Error importing TensorFlow. Please check your installation.")
-    st.stop()
-
-# Manejo de errores para las importaciones de streamlit_webrtc
-try:
-    from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
-except ImportError:
-    st.error("Error importing streamlit_webrtc. Please check your installation.")
-    st.stop()
-
 # Configuración de la página de Streamlit
 st.set_page_config(
     page_title="Detector de Emociones",
@@ -174,7 +158,7 @@ else:
 
     with col1:
         # Aquí va la parte del video
-        webrtc_streamer(
+        ctx = webrtc_streamer(
             key="example", 
             video_processor_factory=EmotionDetector,
             mode=WebRtcMode.SENDRECV, 
@@ -186,16 +170,18 @@ else:
     with col2:
         # Dibuja el gráfico de barras utilizando los datos almacenados en la variable de sesión
         figura_placeholder = st.empty()
-        while True:
-            if 'preds' in st.session_state:
-                fig, ax = plt.subplots()
-                ax.bar(range(len(classes)), st.session_state['preds'], color=colors, tick_label=classes)
-                ax.set_ylim([0, max(1, max(st.session_state['preds']))])
-                plt.xticks(rotation=45, ha='right')
-                plt.tight_layout()
-                figura_placeholder.pyplot(fig)
-                plt.close(fig)
-            st.experimental_rerun()
+        
+        if ctx.state.playing:
+            while True:
+                if 'preds' in st.session_state:
+                    fig, ax = plt.subplots()
+                    ax.bar(range(len(classes)), st.session_state['preds'], color=colors, tick_label=classes)
+                    ax.set_ylim([0, max(1, max(st.session_state['preds']))])
+                    plt.xticks(rotation=45, ha='right')
+                    plt.tight_layout()
+                    figura_placeholder.pyplot(fig)
+                    plt.close(fig)
+                st.empty()  # This will trigger a rerun without using experimental_rerun
 
 st.sidebar.markdown('---')
 st.sidebar.subheader('Creado por:')
