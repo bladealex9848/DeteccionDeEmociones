@@ -7,5 +7,3 @@ tensorflow==2.13.0
 streamlit_webrtc==0.47.1
 protobuf==3.20.3
 av==10.0.0
-aioice==0.9.0
-aiortc==1.5.0
