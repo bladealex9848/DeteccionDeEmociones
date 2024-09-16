@@ -8,6 +8,12 @@ from tensorflow.keras.preprocessing.image import img_to_array
 import os
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
+import logging
+from datetime import datetime
+
+# Configuración de logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Configuración de la página de Streamlit
 st.set_page_config(
@@ -15,11 +21,6 @@ st.set_page_config(
     page_icon=":smiley:",
     layout="wide",
     initial_sidebar_state='collapsed',
-    menu_items={
-        'Get Help': 'https://alexanderoviedofadul.dev/',
-        'Report a bug': None,
-        'About': "Este es un detector de emociones en tiempo real que utiliza un modelo preentrenado."
-    }
 )
 
 # Título y descripción de la aplicación
@@ -97,8 +98,16 @@ class EmotionDetector(VideoTransformerBase):
 
             preds_sum = [sum(x) for x in zip(preds_sum, pred)]
 
+        # Normalizar las predicciones
+        total = sum(preds_sum)
+        if total > 0:
+            preds_sum = [x / total for x in preds_sum]
+
         # Actualiza la variable de sesión con los últimos datos de predicción
         st.session_state['preds'] = preds_sum
+        
+        # Registrar las predicciones
+        logger.info(f"Predicciones actualizadas: {preds_sum}")
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
@@ -134,20 +143,29 @@ if use_local_camera:
                 cv2.rectangle(frame, (Xi, Yi), (Xf, Yf), (255, 0, 0), 3)
                 preds_sum = [sum(x) for x in zip(preds_sum, pred)]
             
+            # Normalizar las predicciones
+            total = sum(preds_sum)
+            if total > 0:
+                preds_sum = [x / total for x in preds_sum]
+            
             # Actualizar el marcador de posición con la nueva imagen
             frame_placeholder.image(frame, channels="BGR")
 
             # Actualizar gráfica
             fig, ax = plt.subplots()
             ax.bar(range(len(classes)), preds_sum, color=colors, tick_label=classes)
-            ax.set_ylim([0, max(1, max(preds_sum))])
+            ax.set_ylim([0, 1])
             plt.xticks(rotation=45, ha='right')
             plt.tight_layout()
             figura_placeholder.pyplot(fig)
             plt.close(fig)
 
+            # Registrar las predicciones
+            logger.info(f"Predicciones (cámara local): {preds_sum}")
+
     except Exception as e:
         st.error(f"Ha ocurrido un error: {e}")
+        logger.error(f"Error en el modo de cámara local: {e}")
 
     finally:
         cam.release()
@@ -171,19 +189,30 @@ else:
         # Dibuja el gráfico de barras utilizando los datos almacenados en la variable de sesión
         figura_placeholder = st.empty()
         
+        def update_chart():
+            if 'preds' in st.session_state:
+                fig, ax = plt.subplots()
+                ax.bar(range(len(classes)), st.session_state['preds'], color=colors, tick_label=classes)
+                ax.set_ylim([0, 1])
+                plt.xticks(rotation=45, ha='right')
+                plt.tight_layout()
+                figura_placeholder.pyplot(fig)
+                plt.close(fig)
+                logger.info(f"Gráfico actualizado con predicciones: {st.session_state['preds']}")
+
         if ctx.state.playing:
-            while True:
-                if 'preds' in st.session_state:
-                    fig, ax = plt.subplots()
-                    ax.bar(range(len(classes)), st.session_state['preds'], color=colors, tick_label=classes)
-                    ax.set_ylim([0, max(1, max(st.session_state['preds']))])
-                    plt.xticks(rotation=45, ha='right')
-                    plt.tight_layout()
-                    figura_placeholder.pyplot(fig)
-                    plt.close(fig)
-                st.empty()  # This will trigger a rerun without using experimental_rerun
+            st.button("Actualizar gráfico", on_click=update_chart)
+            update_chart()  # Actualizar el gráfico inicialmente
 
 st.sidebar.markdown('---')
 st.sidebar.subheader('Creado por:')
 st.sidebar.markdown('Alexander Oviedo Fadul')
 st.sidebar.markdown("[GitHub](https://github.com/bladealex9848) | [Website](https://alexanderoviedofadul.dev/) | [LinkedIn](https://www.linkedin.com/in/alexander-oviedo-fadul/) | [Instagram](https://www.instagram.com/alexander.oviedo.fadul) | [Twitter](https://twitter.com/alexanderofadul) | [Facebook](https://www.facebook.com/alexanderof/) | [WhatsApp](https://api.whatsapp.com/send?phone=573015930519&text=Hola%20!Quiero%20conversar%20contigo!%20)")
+
+# Sección de registro de información (contraída por defecto)
+with st.expander("Registro de Información", expanded=False):
+    if st.button("Mostrar últimos registros"):
+        st.text("Últimos registros:")
+        log_entries = logger.handlers[0].stream.getvalue().split('\n')[-10:]
+        for entry in log_entries:
+            st.text(entry)
