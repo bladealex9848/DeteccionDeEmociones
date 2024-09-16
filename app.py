@@ -7,23 +7,14 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
 import os
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
+import logging
 
-# Manejo de errores para las importaciones de TensorFlow
-try:
-    import tensorflow as tf
-    from tensorflow.keras.models import load_model
-    from tensorflow.keras.preprocessing.image import img_to_array
-except ImportError:
-    st.error("Error importing TensorFlow. Please check your installation.")
-    st.stop()
+# Configuración de logging
+logging.basicConfig(level=logging.DEBUG)
 
-# Manejo de errores para las importaciones de streamlit_webrtc
-try:
-    from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
-except ImportError:
-    st.error("Error importing streamlit_webrtc. Please check your installation.")
-    st.stop()
+# Desactivar el uso de GPU para TensorFlow
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 # Configuración de la página de Streamlit
 st.set_page_config(
@@ -55,32 +46,40 @@ if not os.path.exists(prototxtPath) or not os.path.exists(weightsPath) or not os
     st.error("Error: Archivo de modelo o clasificador no encontrado.")
     st.stop()
 
-faceNet = cv2.dnn.readNet(prototxtPath, weightsPath)
-emotionModel = load_model(modelPath)
+try:
+    faceNet = cv2.dnn.readNet(prototxtPath, weightsPath)
+    emotionModel = load_model(modelPath)
+except Exception as e:
+    st.error(f"Error al cargar los modelos: {e}")
+    st.stop()
 
 # Función para predecir la emoción
 def predict_emotion(frame, faceNet, emotionModel):
-    blob = cv2.dnn.blobFromImage(frame, 1.0, (224, 224),(104.0, 177.0, 123.0))
-    faceNet.setInput(blob)
-    detections = faceNet.forward()
-    faces = []
-    locs = []
-    preds = []
-    for i in range(0, detections.shape[2]):
-        confidence = detections[0, 0, i, 2]
-        if confidence > 0.4:
-            box = detections[0, 0, i, 3:7] * np.array([frame.shape[1], frame.shape[0], frame.shape[1], frame.shape[0]])
-            (Xi, Yi, Xf, Yf) = box.astype("int")
-            face = frame[Yi:Yf, Xi:Xf]
-            face = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
-            face = cv2.resize(face, (48, 48))
-            face2 = img_to_array(face)
-            face2 = np.expand_dims(face2, axis=0)
-            faces.append(face2)
-            locs.append((Xi, Yi, Xf, Yf))
-            pred = emotionModel.predict(face2)
-            preds.append(pred[0])
-    return (locs, preds)
+    try:
+        blob = cv2.dnn.blobFromImage(frame, 1.0, (224, 224), (104.0, 177.0, 123.0))
+        faceNet.setInput(blob)
+        detections = faceNet.forward()
+        faces = []
+        locs = []
+        preds = []
+        for i in range(0, detections.shape[2]):
+            confidence = detections[0, 0, i, 2]
+            if confidence > 0.4:
+                box = detections[0, 0, i, 3:7] * np.array([frame.shape[1], frame.shape[0], frame.shape[1], frame.shape[0]])
+                (Xi, Yi, Xf, Yf) = box.astype("int")
+                face = frame[Yi:Yf, Xi:Xf]
+                face = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
+                face = cv2.resize(face, (48, 48))
+                face2 = img_to_array(face)
+                face2 = np.expand_dims(face2, axis=0)
+                faces.append(face2)
+                locs.append((Xi, Yi, Xf, Yf))
+                pred = emotionModel.predict(face2)
+                preds.append(pred[0])
+        return (locs, preds)
+    except Exception as e:
+        logging.error(f"Error en predict_emotion: {e}")
+        return ([], [])
 
 # Tipos de emociones y colores para la gráfica
 classes = ['Enojado', 'Disgusto', 'Miedo', 'Feliz', 'Neutral', 'Triste', 'Sorprendido']
@@ -91,14 +90,13 @@ if 'preds' not in st.session_state:
     st.session_state['preds'] = [0] * len(classes)
 
 # Clase para el procesamiento de video con webrtc
-class EmotionDetector(VideoTransformerBase):
-    def recv(self, frame):
+class EmotionDetector(VideoProcessorBase):
+    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         try:
             img = frame.to_ndarray(format="bgr24")
             img = imutils.resize(img, width=640)
             (locs, preds) = predict_emotion(img, faceNet, emotionModel)
 
-            # Inicializa un arreglo para almacenar las sumas de las predicciones por clase
             preds_sum = [0] * len(classes)
 
             for (box, pred) in zip(locs, preds):
@@ -108,91 +106,41 @@ class EmotionDetector(VideoTransformerBase):
                 cv2.putText(img, label, (Xi+5, Yi-15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
                 cv2.rectangle(img, (Xi, Yi), (Xf, Yf), (255, 0, 0), 3)
 
-                # Acumula las predicciones por cada emoción
                 preds_sum = [sum(x) for x in zip(preds_sum, pred)]
 
-            # Actualiza la variable de sesión con los últimos datos de predicción
             st.session_state['preds'] = preds_sum
 
             return av.VideoFrame.from_ndarray(img, format="bgr24")
         except Exception as e:
-            print(f"Error en el procesamiento de video: {e}")
-            return av.VideoFrame.from_ndarray(img, format="bgr24")
+            logging.error(f"Error en el procesamiento de video: {e}")
+            return frame
 
-use_local_camera = st.checkbox("Usar cámara local (solo para pruebas locales)")
+# Define dos columnas: una para el video y otra para el gráfico de barras
+col1, col2 = st.columns(2)
 
-if use_local_camera:
-    cam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-    if not cam.isOpened():
-        st.error("Error: No se pudo acceder a la cámara web.")
-        st.stop()
+with col1:
+    # Configuración de WebRTC
+    webrtc_ctx = webrtc_streamer(
+        key="emotion-detector",
+        video_processor_factory=EmotionDetector,
+        mode=WebRtcMode.SENDRECV,
+        async_processing=True,
+        rtc_configuration={
+            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}],
+            "iceTransportPolicy": "all",
+        },
+        media_stream_constraints={"video": True, "audio": False},
+    )
 
-    col1, col2 = st.columns(2)
-    with col1:
-        frame_placeholder = st.empty()
-    with col2:
-        figura_placeholder = st.empty()
-
-    try:
-        while True:
-            ret, frame = cam.read()
-            if not ret:
-                st.error("Error: No se pudo leer el cuadro de la cámara web.")
-                break
-            frame = imutils.resize(frame, width=640)
-            (locs, preds) = predict_emotion(frame, faceNet, emotionModel)
-            
-            for (box, pred) in zip(locs, preds):
-                (Xi, Yi, Xf, Yf) = box
-                (angry, disgust, fear, happy, neutral, sad, surprise) = pred
-                label = "{}: {:.0f}%".format(classes[np.argmax(pred)], max(angry, disgust, fear, happy, neutral, sad, surprise) * 100)
-                cv2.rectangle(frame, (Xi, Yi-40), (Xf, Yi), (255, 0, 0), -1)
-                cv2.putText(frame, label, (Xi+5, Yi-15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-                cv2.rectangle(frame, (Xi, Yi), (Xf, Yf), (255, 0, 0), 3)
-                y = [angry, disgust, fear, happy, neutral, sad, surprise]
-                
-                # Actualizar el marcador de posición con la nueva imagen
-                frame_placeholder.image(frame, channels="BGR")
-
-                # Limpia y actualiza la figura en su marcador de posición
-                figura1, ax = plt.subplots()  # Se define 'ax' aquí dentro del bucle
-                ax.bar(range(len(classes)), [p for p in preds[0]], color=colors, tick_label=classes)
-                ax.set_ylim([0, 1])
-                plt.xticks(rotation=45, ha='right')
-                plt.tight_layout()
-                figura_placeholder.pyplot(figura1)
-
-    except Exception as e:
-        st.error(f"Ha ocurrido un error: {e}")
-
-    finally:
-        cam.release()
-        cv2.destroyAllWindows()
-else:
-    # Define dos columnas: una para el video y otra para el gráfico de barras
-    col1, col2 = st.columns(2)
-
-    with col1:
-        # Aquí va la parte del video
-        webrtc_streamer(
-            key="example", 
-            video_processor_factory=EmotionDetector,  # Cambio de video_transformer_factory a video_processor_factory
-            mode=WebRtcMode.SENDRECV, 
-            async_processing=True,
-            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-            media_stream_constraints={"video": True, "audio": False}
-        )
-
-    with col2:
-        # Dibuja el gráfico de barras utilizando los datos almacenados en la variable de sesión
-        if 'preds' in st.session_state:
-            figura1, ax = plt.subplots()
-            ax.bar(range(len(classes)), st.session_state['preds'], color=colors, tick_label=classes)
-            ax.set_ylim([0, 1])
-            plt.xticks(rotation=45, ha='right')
-            plt.tight_layout()
-            st.pyplot(figura1)
-
+with col2:
+    # Dibuja el gráfico de barras utilizando los datos almacenados en la variable de sesión
+    if 'preds' in st.session_state:
+        figura1, ax = plt.subplots()
+        ax.bar(range(len(classes)), st.session_state['preds'], color=colors, tick_label=classes)
+        ax.set_ylim([0, 1])
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        st.pyplot(figura1)
 
 st.sidebar.markdown('---')
 st.sidebar.subheader('Creado por:')
