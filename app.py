@@ -3,7 +3,6 @@ import cv2
 import numpy as np
 import imutils
 import plotly.graph_objs as go
-import matplotlib.pyplot as plt
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
 import os
@@ -11,7 +10,6 @@ import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
 import threading
 import time
-import json
 
 # Configuración de la página de Streamlit
 st.set_page_config(page_title="Detector de Emociones", page_icon=":smiley:", layout="wide")
@@ -69,8 +67,6 @@ colors = ['red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'black']
 # Inicializa variables de sesión
 if 'preds' not in st.session_state:
     st.session_state['preds'] = [0] * len(classes)
-if 'chart_type' not in st.session_state:
-    st.session_state['chart_type'] = 'Plotly'
 
 # Clase para el procesamiento de video con webrtc
 class EmotionDetector(VideoTransformerBase):
@@ -100,34 +96,28 @@ class EmotionDetector(VideoTransformerBase):
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-# Funciones para crear gráficos
+# Función para crear gráfico de Plotly
 def create_plotly_chart():
     data = [go.Bar(x=classes, y=st.session_state['preds'], marker_color=colors)]
     layout = go.Layout(yaxis=dict(range=[0, 1]), title='Emociones Detectadas')
     fig = go.Figure(data=data, layout=layout)
     return fig
 
-def create_matplotlib_chart():
-    fig, ax = plt.subplots()
-    ax.bar(classes, st.session_state['preds'], color=colors)
-    ax.set_ylim(0, 1)
-    ax.set_title('Emociones Detectadas')
-    plt.xticks(rotation=45, ha='right')
-    plt.tight_layout()
-    return fig
+# Función para mostrar datos en texto
+def show_text_data():
+    for emotion, value in zip(classes, st.session_state['preds']):
+        st.write(f"{emotion}: {value:.2f}")
 
-# Función para actualizar el gráfico
-def update_chart(chart_placeholder):
+# Función para actualizar la visualización
+def update_visualization():
     while True:
         try:
-            if st.session_state['chart_type'] == 'Plotly':
-                fig = create_plotly_chart()
-                chart_placeholder.plotly_chart(fig, use_container_width=True)
-            else:
-                fig = create_matplotlib_chart()
-                chart_placeholder.pyplot(fig)
+            with chart_placeholder.container():
+                st.plotly_chart(create_plotly_chart(), use_container_width=True)
         except Exception as e:
-            st.error(f"Error al actualizar el gráfico: {e}")
+            st.error(f"Error al crear el gráfico: {e}")
+            st.write("Mostrando datos en formato de texto como respaldo:")
+            show_text_data()
         time.sleep(0.1)
 
 # Crear dos columnas
@@ -145,29 +135,14 @@ with col1:
     )
 
 with col2:
-    # Selector de tipo de gráfico
-    st.session_state['chart_type'] = st.radio("Seleccionar tipo de gráfico:", ('Plotly', 'Matplotlib'))
-    
-    # Placeholder para el gráfico
+    # Placeholder para el gráfico o texto
     chart_placeholder = st.empty()
 
-    # Mostrar datos en bruto
-    st.write("Datos de emociones en tiempo real:")
-    data_placeholder = st.empty()
-
-    def update_data():
-        while True:
-            data_placeholder.json(dict(zip(classes, st.session_state['preds'])))
-            time.sleep(0.1)
-
-    # Iniciar hilos de actualización
+    # Iniciar hilo de actualización
     if ctx.state.playing:
-        chart_thread = threading.Thread(target=update_chart, args=(chart_placeholder,))
-        data_thread = threading.Thread(target=update_data)
-        chart_thread.daemon = True
-        data_thread.daemon = True
-        chart_thread.start()
-        data_thread.start()
+        update_thread = threading.Thread(target=update_visualization)
+        update_thread.daemon = True
+        update_thread.start()
 
 # Información adicional
 st.sidebar.markdown('---')
@@ -175,29 +150,11 @@ st.sidebar.subheader('Creado por:')
 st.sidebar.markdown('Alexander Oviedo Fadul')
 st.sidebar.markdown("[GitHub](https://github.com/bladealex9848) | [Website](https://alexanderoviedofadul.dev/)")
 
-# Sistema de manejo de incidentes
+# Sistema de recuperación ante errores
 st.sidebar.markdown('---')
-st.sidebar.subheader('Registro de Incidentes')
+st.sidebar.subheader('Estado del Sistema')
 
-if 'incidents' not in st.session_state:
-    st.session_state['incidents'] = []
+if st.sidebar.button("Reiniciar Visualización"):
+    st.experimental_rerun()
 
-incident_type = st.sidebar.selectbox("Tipo de Incidente", ["Error de Carga", "Fallo en Detección", "Problema de Rendimiento", "Otro"])
-incident_description = st.sidebar.text_area("Descripción del Incidente")
-
-if st.sidebar.button("Reportar Incidente"):
-    incident = {
-        "tipo": incident_type,
-        "descripcion": incident_description,
-        "fecha": time.strftime("%Y-%m-%d %H:%M:%S")
-    }
-    st.session_state['incidents'].append(incident)
-    st.sidebar.success("Incidente reportado con éxito.")
-
-if st.sidebar.button("Ver Incidentes Reportados"):
-    for idx, incident in enumerate(st.session_state['incidents'], 1):
-        st.sidebar.markdown(f"**Incidente {idx}**")
-        st.sidebar.write(f"Tipo: {incident['tipo']}")
-        st.sidebar.write(f"Descripción: {incident['descripcion']}")
-        st.sidebar.write(f"Fecha: {incident['fecha']}")
-        st.sidebar.markdown("---")
+st.sidebar.info("Si no ves las estadísticas, intenta reiniciar la visualización o recargar la página.")
