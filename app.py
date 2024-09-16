@@ -11,6 +11,7 @@ from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
 import logging
 from datetime import datetime
 import io
+import time
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO)
@@ -106,7 +107,7 @@ class EmotionDetector(VideoTransformerBase):
 
         # Actualiza la variable de sesión con los últimos datos de predicción
         st.session_state['preds'] = preds_sum
-        
+
         # Registrar las predicciones
         logger.info(f"Predicciones actualizadas: {preds_sum}")
 
@@ -134,7 +135,7 @@ if use_local_camera:
                 break
             frame = imutils.resize(frame, width=640)
             (locs, preds) = predict_emotion(frame, faceNet, emotionModel)
-            
+
             preds_sum = [0] * len(classes)
             for (box, pred) in zip(locs, preds):
                 (Xi, Yi, Xf, Yf) = box
@@ -143,12 +144,12 @@ if use_local_camera:
                 cv2.putText(frame, label, (Xi+5, Yi-15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
                 cv2.rectangle(frame, (Xi, Yi), (Xf, Yf), (255, 0, 0), 3)
                 preds_sum = [sum(x) for x in zip(preds_sum, pred)]
-            
+
             # Normalizar las predicciones
             total = sum(preds_sum)
             if total > 0:
                 preds_sum = [x / total for x in preds_sum]
-            
+
             # Actualizar el marcador de posición con la nueva imagen
             frame_placeholder.image(frame, channels="BGR")
 
@@ -164,6 +165,9 @@ if use_local_camera:
             # Registrar las predicciones
             logger.info(f"Predicciones (cámara local): {preds_sum}")
 
+            # Añadir un pequeño retraso para permitir que Streamlit actualice la interfaz
+            time.sleep(0.1)
+
     except Exception as e:
         st.error(f"Ha ocurrido un error: {e}")
         logger.error(f"Error en el modo de cámara local: {e}")
@@ -178,9 +182,9 @@ else:
     with col1:
         # Aquí va la parte del video
         ctx = webrtc_streamer(
-            key="example", 
+            key="example",
             video_processor_factory=EmotionDetector,
-            mode=WebRtcMode.SENDRECV, 
+            mode=WebRtcMode.SENDRECV,
             async_processing=True,
             rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
             media_stream_constraints={"video": True, "audio": False}
@@ -189,7 +193,7 @@ else:
     with col2:
         # Dibuja el gráfico de barras utilizando los datos almacenados en la variable de sesión
         figura_placeholder = st.empty()
-        
+
         def update_chart():
             if 'preds' in st.session_state:
                 fig, ax = plt.subplots()
@@ -202,8 +206,9 @@ else:
                 logger.info(f"Gráfico actualizado con predicciones: {st.session_state['preds']}")
 
         if ctx.state.playing:
-            update_chart()  # Actualizar el gráfico inicialmente
-            st.empty()  # Este empty provocará una actualización periódica
+            while True:
+                update_chart()  # Actualizar el gráfico continuamente
+                time.sleep(0.1)  # Añadir un pequeño retraso para permitir que Streamlit actualice la interfaz
 
 st.sidebar.markdown('---')
 st.sidebar.subheader('Creado por:')
