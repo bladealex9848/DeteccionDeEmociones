@@ -10,6 +10,7 @@ import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
 import logging
 from datetime import datetime
+import io
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO)
@@ -201,8 +202,8 @@ else:
                 logger.info(f"Gráfico actualizado con predicciones: {st.session_state['preds']}")
 
         if ctx.state.playing:
-            st.button("Actualizar gráfico", on_click=update_chart)
             update_chart()  # Actualizar el gráfico inicialmente
+            st.empty()  # Este empty provocará una actualización periódica
 
 st.sidebar.markdown('---')
 st.sidebar.subheader('Creado por:')
@@ -213,6 +214,23 @@ st.sidebar.markdown("[GitHub](https://github.com/bladealex9848) | [Website](http
 with st.expander("Registro de Información", expanded=False):
     if st.button("Mostrar últimos registros"):
         st.text("Últimos registros:")
-        log_entries = logger.handlers[0].stream.getvalue().split('\n')[-10:]
-        for entry in log_entries:
-            st.text(entry)
+        # Usar StringIO para capturar los logs
+        log_capture_string = io.StringIO()
+        ch = logging.StreamHandler(log_capture_string)
+        ch.setLevel(logging.INFO)
+        logger.addHandler(ch)
+
+        # Forzar un log para asegurarnos de que tenemos algo que mostrar
+        logger.info("Mostrando registros")
+
+        # Obtener el contenido del log
+        log_contents = log_capture_string.getvalue()
+        log_entries = log_contents.split('\n')
+
+        # Mostrar las últimas 10 entradas (o menos si no hay 10)
+        for entry in log_entries[-10:]:
+            if entry:  # Asegurarse de que la entrada no está vacía
+                st.text(entry)
+
+        # Limpiar el handler adicional para evitar duplicados
+        logger.removeHandler(ch)
