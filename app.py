@@ -211,7 +211,6 @@ else:
                 update_chart()  # Actualizar el gráfico continuamente
                 time.sleep(0.05)  # Reducir el retraso para aumentar la frecuencia de actualización
 
-
 st.sidebar.markdown('---')
 st.sidebar.subheader('Creado por:')
 st.sidebar.markdown('Alexander Oviedo Fadul')
@@ -241,3 +240,5 @@ with st.expander("Registro de Información", expanded=False):
 
         # Limpiar el handler adicional para evitar duplicados
         logger.removeHandler(ch)
+    else:
+        st.text("Haz clic en 'Mostrar últimos registros' para ver la información del registro.")
