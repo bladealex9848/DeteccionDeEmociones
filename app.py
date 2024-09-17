@@ -192,23 +192,25 @@ else:
 
     with col2:
         # Dibuja el gráfico de barras utilizando los datos almacenados en la variable de sesión
-        figura_placeholder = st.empty()
+        fig, ax = plt.subplots()
+        bar = ax.bar(range(len(classes)), [0] * len(classes), color=colors, tick_label=classes)
+        ax.set_ylim([0, 1])
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        figura_placeholder = st.pyplot(fig)
 
         def update_chart():
             if 'preds' in st.session_state:
-                fig, ax = plt.subplots()
-                ax.bar(range(len(classes)), st.session_state['preds'], color=colors, tick_label=classes)
-                ax.set_ylim([0, 1])
-                plt.xticks(rotation=45, ha='right')
-                plt.tight_layout()
+                for rect, h in zip(bar, st.session_state['preds']):
+                    rect.set_height(h)
                 figura_placeholder.pyplot(fig)
-                plt.close(fig)
                 logger.info(f"Gráfico actualizado con predicciones: {st.session_state['preds']}")
 
         if ctx.state.playing:
             while True:
                 update_chart()  # Actualizar el gráfico continuamente
-                time.sleep(0.1)  # Añadir un pequeño retraso para permitir que Streamlit actualice la interfaz
+                time.sleep(0.05)  # Reducir el retraso para aumentar la frecuencia de actualización
+
 
 st.sidebar.markdown('---')
 st.sidebar.subheader('Creado por:')
