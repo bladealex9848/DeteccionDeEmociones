@@ -111,6 +111,10 @@ class EmotionDetector(VideoTransformerBase):
         # Registrar las predicciones
         logger.info(f"Predicciones actualizadas: {preds_sum}")
 
+        # Añadir registros adicionales
+        logger.info(f"Datos de predicción: {preds}")
+        logger.info(f"Datos de la variable de sesión: {st.session_state['preds']}")
+
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 use_local_camera = st.checkbox("Usar cámara local (solo para pruebas locales)")
@@ -216,29 +220,11 @@ st.sidebar.subheader('Creado por:')
 st.sidebar.markdown('Alexander Oviedo Fadul')
 st.sidebar.markdown("[GitHub](https://github.com/bladealex9848) | [Website](https://alexanderoviedofadul.dev/) | [LinkedIn](https://www.linkedin.com/in/alexander-oviedo-fadul/) | [Instagram](https://www.instagram.com/alexander.oviedo.fadul) | [Twitter](https://twitter.com/alexanderofadul) | [Facebook](https://www.facebook.com/alexanderof/) | [WhatsApp](https://api.whatsapp.com/send?phone=573015930519&text=Hola%20!Quiero%20conversar%20contigo!%20)")
 
-# Sección de registro de información (contraída por defecto)
-with st.expander("Registro de Información", expanded=False):
-    if st.button("Mostrar últimos registros"):
-        st.text("Últimos registros:")
-        # Usar StringIO para capturar los logs
-        log_capture_string = io.StringIO()
-        ch = logging.StreamHandler(log_capture_string)
-        ch.setLevel(logging.INFO)
-        logger.addHandler(ch)
+# Mostrar la información de registro en la parte inferior de la aplicación
+log_capture_string = io.StringIO()
+ch = logging.StreamHandler(log_capture_string)
+ch.setLevel(logging.INFO)
+logger.addHandler(ch)
 
-        # Forzar un log para asegurarnos de que tenemos algo que mostrar
-        logger.info("Mostrando registros")
-
-        # Obtener el contenido del log
-        log_contents = log_capture_string.getvalue()
-        log_entries = log_contents.split('\n')
-
-        # Mostrar las últimas 10 entradas (o menos si no hay 10)
-        for entry in log_entries[-10:]:
-            if entry:  # Asegurarse de que la entrada no está vacía
-                st.text(entry)
-
-        # Limpiar el handler adicional para evitar duplicados
-        logger.removeHandler(ch)
-    else:
-        st.text("Haz clic en 'Mostrar últimos registros' para ver la información del registro.")
+st.text("Registro de información:")
+st.text(log_capture_string.getvalue())
